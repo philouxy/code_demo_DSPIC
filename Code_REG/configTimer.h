@@ -2,7 +2,7 @@
 // Nom du projet 		:	Reglage Encodeur
 // Nom du fichier 		:   configOscillateur.h 
 // Date de création 	:   03.12.2020
-// Date de modification : 	10.02.2021
+// Date de modification : 	29.04.2021
 // 
 // Auteur 				: 	Philou (Ph. Bovey)
 //                      :   Michel Bonzon 
@@ -27,6 +27,12 @@
 
 #ifndef CONFIGTIMER_H
 #define	CONFIGTIMER_H
+
+//-- ATTENTION A METTRE EN COMMENTAIRE LE TIMMING QUE L'ON VEUT PAS --//
+//-- POUR LE CHOIX DE LA CONFIGURATION DU TIMER D'UTILISATION       --// 
+#define CHOIX_TIME_1MS 100            // 1ms => 1ms / 10us = 100
+//#define CHOIX_TIME_100US 10         // 100us => 100us / 10us = 10
+
 
 //-- variables globales --// 
 extern int8_t flagInterrupt;

@@ -2,7 +2,7 @@
 // Nom du projet 		:	Reglage Encodeur
 // Nom du fichier 		:   main_code.c
 // Date de création 	:   04.12.2019
-// Date de modification : 	10.02.2021
+// Date de modification : 	29.04.2021
 // 
 // Auteur 				: 	Philou (Ph. Bovey) 
 //                      :   Michel Bonzon 
@@ -54,18 +54,36 @@
 
 #define NBR_PAS_MAX_ECHANTILLONER 1024
 
-//-- variables globales utilisées dans plusieurs fichiers --// 
-int8_t flagInterrupt = 0;                   
+//-- Macro de configuration selon le choix de l'échnatillonnage --// 
+#if defined (CHOIX_TIME_1MS)
+    long periodesaut = 5000;      // 5s => 5000ms / 1ms = 5000 
+    #if defined (VITESSE)
+        float saut = SAUT_VITESSE_1MS;
+    #elif (defined (POSITION) || defined (POSITION_ANGULAIRE))
+        float saut = SAUT_POSITION ;
+    #else 
+        float saut = 0; 
+    #endif 
+#elif defined (CHOIX_TIME_100US)
+    long periodesaut = 50000;      // 5s => 5000ms / 0.1ms = 50 000
+    #if defined (VITESSE)
+        float saut = SAUT_VITESSE_100US;
+    #elif (defined (POSITION) || defined (POSITION_ANGULAIRE))
+        float saut = SAUT_POSITION ;
+    #else 
+        float saut = 0; 
+    #endif   
+#else 
+   long periodesaut = 0;  
+#endif
 
+//-- variables globales utilisées dans plusieurs fichiers --// 
 long temps_1ms = 0; 
 
-long periodesaut = 5000;                   // 5s 
-long periodePID = 10;                       // 1ms 
+long tempPID = 0, TempsautConsigne = 0, tempPosition = 0; 
+long retenu = 0; 
 
-long tempPID = 0, TempsautConsigne = 0; 
-
-//-- position 
-long retenu = 0;
+//-- variable gloable position --//
 long posk = 0, posk_1 = 0; 
 
 //-- vitesse 
@@ -75,26 +93,15 @@ float vitessek, vitessek_1;
 float erreurk, erreurk_1; 
 
 //-- consigne 
-float consineV, consigneP; 
+float consigneV, consigneP, consigne_P_k_1, consigneP_Ang, consigneP_Ang_k_1; 
 
 //-- constante PID
-float Kp = 0.1, Ki, Kd;  
-float Up_k, Ui_k, Ui_k_1,  Ud_k; 
+float Kp = 0.02, Ki = 0, Kd = 0;  
+float Up_k = 0, Ui_k = 0, Ui_k_1 = 0,  Ud_k = 0, Ud_k_1 = 0; 
 float Uk; 
 
-//-- consigne --//
-float saut = 2621;                       // upas = 512*128*4 / 10ms   => 4 tous les flancs 
-
-
-/*void CalculerVitesse(void); 
-void CalculerErreur(void);
-void CalculerPID(void); 
-void RaffraichirPWM(void); 
-void MAJVariables(void); 
-void CalculerConsigne(void); 
-void LectureImagePosition(void);*/ 
-
-
+//-- prototype --// 
+void Convertion_Cv_Cp(); 
 
 int main(int argc, char** argv) 
 {
@@ -125,12 +132,15 @@ int main(int argc, char** argv)
         if (temps_1ms > tempPID)
         {
             LectureImagePosition(); 
-            CalculerVitesse(); 
+            #if defined (VITESSE)
+                CalculerVitesse();
+                Convertion_Cv_Cp(); 
+            #endif 
             CalculerErreur();
             CalculerPID(); 
             RaffraichirPWM(); 
             MAJVariables(); 
-            tempPID = tempPID + periodePID; 
+            tempPID = tempPID + PERIODE_ECHANTILLON_PID_MS; 
         }
         
         if(temps_1ms > TempsautConsigne)
@@ -139,10 +149,24 @@ int main(int argc, char** argv)
             TempsautConsigne = TempsautConsigne + periodesaut; 
         }
         
-        // 3685 = 100% Timer1
-        
-        OC1RS = (((vitessek / 10484.0) * 3685) + 1842); 
-        OC2RS = (((consineV / 10484.0) * 3685) + 1842);   
+        //-- représentation de la consigne et de la valeur regulée --// 
+        //-- utilisation de macro pour faire ceci - ATTENTION NE PAS TOUCHER --//
+        #if defined (VITESSE)
+            //-- Représentation Consigne vitesse --//
+            OC2RS = (((consigneV / (10484.0/10)) * 3685) + 1842); 
+            //-- Représentation Vitesse régulée --//
+            OC1RS = (((vitessek / (10484.0/10)) * 3685) + 1842); 
+        #elif defined (POSITION)
+            //-- Représentation Consigne position --//                          
+            OC2RS = (((consigneP / 1048576.0) * 3685) + 1842);                  // // 4 * 65536 * 4 = 1048576  
+            //-- Représentation Position régulée --//                           // 3685 = 100% Timer1
+            OC1RS = (((posk / 1048576.0) * 3685) + 1842); 
+        #elif defined (POSITION_ANGULAIRE)
+            //-- Représentation Consigne position angulaire --//
+            OC2RS = (((consigneP_Ang / (2*262144)) * 3685) + 1842);  
+            //-- Représentation Position Angualire régulée --//
+            OC1RS =  ((((posk * 3685) / (2*262144)) ) + 1842); 
+        #endif         
     }
 
     return (EXIT_SUCCESS);
@@ -154,17 +178,34 @@ void CalculerVitesse(void)
     vitessek = posk - posk_1; 
 }
 
+
+
 void CalculerErreur()
 {
-    erreurk = consineV - vitessek; 
+    //-- macro de sélection - NE PAS TOUCHER !!! --//
+    
+    #if (defined (VITESSE) || defined (POSITION))
+        erreurk = consigneP - posk; 
+    #elif defined (POSITION_ANGULAIRE)
+        erreurk = consigneP_Ang - posk; 
+    #else
+        erreurk = consigneV - vitessek; 
+    #endif
 }
 
 void CalculerPID(void) 
 {
-    
-    //-- proportionnel 
+    //-- proportionnel --//
     Up_k = Kp * erreurk; 
-    Uk = Up_k; 
+    
+    //-- intégrateur --// 
+    Ui_k = Ki * erreurk + Ui_k_1; 
+    
+    //-- dérivateur --// 
+    //Ud_k = Kd * erreurk + Ud_k_1; 
+            
+    //-- final --// 
+    Uk = Up_k + Ui_k; // + Ud_k; 
 } 
 
 
@@ -176,29 +217,54 @@ void RaffraichirPWM(void)
 
 void MAJVariables(void) 
 {
-    //tempPID = tempPID + periodePID; 
-    vitessek_1 = vitessek; 
     posk_1 = posk; 
+    //Ud_k_1 = Ud_k; 
+    Ui_k_1 = Ui_k; 
+    consigne_P_k_1 = consigneP; 
     
+    //pour test ne pas toucher // 
+    //tempPID = tempPID + PERIODE_ECHANTILLON_PID_MS; 
+    //vitessek_1 = vitessek; 
 }
 
 void CalculerConsigne(void)
 {
-    // variable 
+    //-- déclaration des variables --// 
     static int states = 0;
-    
+        
     states++; 
     
     if(states == 1)
-        consineV = 0; 
+    {
+        #if defined (VITESSE)
+            consigneV = 0; 
+        #elif defined (POSITION)
+             consigneP = 0; 
+        #elif defined (POSITION_ANGULAIRE)
+             consigneP_Ang = 0; 
+        #endif 
+    }
     else if(states == 2)
     {
-       consineV = saut;
-       states = 0;
+        #if defined (VITESSE)
+             consigneV = saut;
+        #elif defined (POSITION)
+             consigneP = saut; 
+        #elif defined (POSITION_ANGULAIRE)
+             consigneP_Ang = saut / 2;   
+        #endif 
     }
     else if(states == 3)
     {
-        consineV = -saut; 
+        #if defined (VITESSE)
+             consigneV = -saut;
+        #elif defined (POSITION)
+             consigneP = -saut; 
+        #elif defined (POSITION_ANGULAIRE)
+             consigneP_Ang = -(saut / 2);   
+        #endif 
+
+        //-- remise à zéro de l'état states --//
         states = 0;
     }
 }
@@ -223,4 +289,11 @@ void LectureImagePosition(void)
     cptQadratureK_1 = cptQadratureK; 
             
 }
+
+void Convertion_Cv_Cp()
+{
+     consigneP = consigneV + consigne_P_k_1; 
+}
+
+
 

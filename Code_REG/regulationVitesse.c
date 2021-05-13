@@ -31,7 +31,7 @@
 #include <math.h>
 
 #include <xc.h>                 // appel de directive du compilateur C pour le Dspic 
-//#include "reg_V.h"
+#include "reg_V.h"
 
 void CalculerVitesse(void)
 {   
@@ -102,20 +102,25 @@ void LectureImagePosition(void)
     //-- déclaration de variable --// 
     long cptQadratureK;                     // compteur de flanc actuelle 
     static long cptQadratureK_1 = 0;        // compteur de flanc passé 
+    static long retenu = 0; 
     
     cptQadratureK = POS1CNT;                // lire compteur de flanc
     
-    //-- gestion de la retenu pour savoir si il y a eu dépassement ou non --// 
-    if (cptQadratureK - cptQadratureK_1 >= 32768)
+    //-- gestion du nb retenu par tour pour savoir si il y a eu dépassement ou non 
+    //-- car la résolution d'un tour en uPas vaut 512 * 128 * 4 = 262 144
+    //-- résolution du compteur lié aux registres du module quadrature 2^16 => 
+    //-- 65 536 / 2 = 32768 => permet de définir le nb de retenu lié au sens  
+    
+    if (cptQadratureK - cptQadratureK_1 >= (VAL_MAX_CMPT_QUADRA_H/2))
     { 
         retenu -= 1;  
     }
-    else if(cptQadratureK - cptQadratureK_1 <= -32768)
+    else if(cptQadratureK - cptQadratureK_1 <= -(VAL_MAX_CMPT_QUADRA_H/2))
     {
         retenu += 1; 
     }
     
-    //-- MAJ de la position 
+    //-- MAJ de la position --// 
     posk = retenu * pow(2, 16) + cptQadratureK; 
     
     //-- MAJ du compteur flanc après gestion de la retenu --// 

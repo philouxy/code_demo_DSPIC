@@ -2,7 +2,7 @@
 // Nom du projet 		:	Reglage Encodeur
 // Nom du fichier 		:   configOscillateur.h 
 // Date de création 	:   03.12.2020
-// Date de modification : 	10.02.2021
+// Date de modification : 	29.04.2021
 // 
 // Auteur 				: 	Philou (Ph. Bovey) 
 //                      :   Michel Bonzon 
@@ -28,8 +28,8 @@
 #endif
 
 #include <stdint.h>
+#include <xc.h>             // appel de directive du compilateur C pour le Dspic
 
-#include <xc.h>                 // appel de directive du compilateur C pour le Dspic 
 #include "configTimer.h"
 
 
@@ -86,20 +86,29 @@ inline void InterruptTimer1Init(void)
 //----------------------------------------------------------------------------//
 void __attribute__((interrupt,no_auto_psv)) _T1Interrupt( void )
 {
-    //-- déclaration de variables --// 
-    static int compteur_1ms = 100;      // ayant un timer de 10us => 
-                                        // initialisation d'une varibale à 
-                                        // représentant 1ms => 1ms / 10us = 100
+    //-- déclaration de variables --//
+    int limiteCompteur; 
     
+    //-- Choix par macro si l'on veut un échantillon à 1ms ou 100us 
+    #if defined (CHOIX_TIME_1MS)
+        static int compteur_time = CHOIX_TIME_1MS;
+        limiteCompteur = CHOIX_TIME_1MS; 
+    #elif  defined (CHOIX_TIME_100US) 
+        static int compteur_time = CHOIX_TIME_100US; 
+        limiteCompteur = CHOIX_TIME_100US; 
+    #else 
+         compteur_time = 0; 
+    #endif  
+                                                
     IFS0bits.T1IF = 0;      // interruption pas activée => remise à zéro
     T1CONbits.TON = 0;      // Disable Timer1 
     
     //-- test pour savoir si 1ms est passée 
-    if(compteur_1ms > 0)
-        compteur_1ms--;         //-- décrémente  
+    if(compteur_time > 0)
+        compteur_time--;         //-- décrémente  
     else 
     {
-        compteur_1ms = 100;     //-- Remise à jour du compteur 
+        compteur_time = limiteCompteur;      //-- Remise à jour du compteur 
         temps_1ms++;            //-- variable de temps utilisé dans le main 
     }
         
